@@ -110,12 +110,32 @@ header p {
     color: white;
 }
 
-#scanBtn:hover, #cameraBtn:hover, #ocrBtn:hover {
+#natureBtn {
+    background: linear-gradient(45deg, #4caf50, #2e7d32);
+    color: white;
+}
+
+#collectionBtn {
+    background: linear-gradient(45deg, #8bc34a, #689f38);
+    color: white;
+}
+
+#textScanBtn {
+    background: linear-gradient(45deg, #ff9800, #f57c00);
+    color: white;
+}
+
+#barcodeScanBtn {
+    background: linear-gradient(45deg, #9c27b0, #7b1fa2);
+    color: white;
+}
+
+#scanBtn:hover, #cameraBtn:hover, #ocrBtn:hover, #natureBtn:hover, #collectionBtn:hover, #textScanBtn:hover, #barcodeScanBtn:hover {
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
 
-#scanBtn:disabled, #cameraBtn:disabled, #ocrBtn:disabled {
+#scanBtn:disabled, #cameraBtn:disabled, #ocrBtn:disabled, #natureBtn:disabled, #collectionBtn:disabled, #textScanBtn:disabled, #barcodeScanBtn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;

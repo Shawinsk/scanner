@@ -4,7 +4,7 @@ let scanHistory = JSON.parse(localStorage.getItem('scanHistory')) || [];
 let qrScanner = null;
 let currentStream = null;
 let facingMode = 'environment'; // Start with back camera
-let currentScanMode = 'qr'; // qr, text, barcode
+let currentScanMode = 'qr'; // qr, text, barcode, nature
 let isFlashOn = false;
 let ocrWorker = null;
 
@@ -101,6 +101,87 @@ function startScan() {
     }, 2000);
 }
 
+// Process barcode data and determine type
+function processBarcodeData(barcode) {
+    const barcodeInfo = {
+        code: barcode,
+        type: determineBarcodeType(barcode),
+        length: barcode.length,
+        checkDigit: null,
+        country: null,
+        manufacturer: null,
+        product: null,
+        isValid: false
+    };
+    
+    // Process based on barcode type
+    if (barcodeInfo.type === 'EAN-13' || barcodeInfo.type === 'UPC-A') {
+        barcodeInfo.isValid = validateEAN13(barcode);
+        if (barcodeInfo.isValid) {
+            barcodeInfo.country = getCountryFromEAN(barcode.substring(0, 3));
+            barcodeInfo.manufacturer = barcode.substring(3, 8);
+            barcodeInfo.product = barcode.substring(8, 12);
+            barcodeInfo.checkDigit = barcode.substring(12, 13);
+        }
+    } else if (barcodeInfo.type === 'EAN-8') {
+        barcodeInfo.isValid = validateEAN8(barcode);
+        if (barcodeInfo.isValid) {
+            barcodeInfo.country = getCountryFromEAN(barcode.substring(0, 3));
+            barcodeInfo.product = barcode.substring(3, 7);
+            barcodeInfo.checkDigit = barcode.substring(7, 8);
+        }
+    } else if (barcodeInfo.type === 'Code 128' || barcodeInfo.type === 'Code 39') {
+        barcodeInfo.isValid = true; // These don't have standard validation
+    }
+    
+    return barcodeInfo;
+}
+
+// Determine barcode type based on pattern
+function determineBarcodeType(barcode) {
+    if (/^\d{13}$/.test(barcode)) {
+        return 'EAN-13';
+    } else if (/^\d{12}$/.test(barcode)) {
+        return 'UPC-A';
+    } else if (/^\d{8}$/.test(barcode)) {
+        return 'EAN-8';
+    } else if (/^\d{6}$/.test(barcode)) {
+        return 'UPC-E';
+    } else if (/^[A-Z0-9\-\. \$\/\+\%]+$/.test(barcode)) {
+        return 'Code 39';
+    } else {
+        return 'Code 128';
+    }
+}
+
+// Validate EAN-13 barcode
+function validateEAN13(barcode) {
+    if (!/^\d{13}$/.test(barcode)) return false;
+    
+    let sum = 0;
+    for (let i = 0; i < 12; i++) {
+        const digit = parseInt(barcode[i]);
+        sum += (i % 2 === 0) ? digit : digit * 3;
+    }
+    
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(barcode[12]);
+}
+
+// Validate EAN-8 barcode
+function validateEAN8(barcode) {
+    if (!/^\d{8}$/.test(barcode)) return false;
+    
+    let sum = 0;
+    for (let i = 0; i < 7; i++) {
+        const digit = parseInt(barcode[i]);
+        sum += (i % 2 === 0) ? digit * 3 : digit;
+    }
+    
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(barcode[7]);
+}
+
 // Toggle camera for scanning
 async function toggleCamera() {
     const cameraSection = document.getElementById('cameraSection');
@@ -137,9 +218,12 @@ async function captureImage() {
     
     if (currentScanMode === 'text') {
         await processImageWithOCR(canvas);
+    } else if (currentScanMode === 'nature') {
+        await analyzeNatureImage(canvas);
     } else {
         // For other modes, save the image
         downloadImage(canvas);
+        showNotification('Image captured successfully!', 'success');
     }
 }
 
@@ -243,10 +327,833 @@ function copyToClipboard(text) {
 // Download captured image
 function downloadImage(canvas) {
     const link = document.createElement('a');
-    link.download = `scan_${new Date().getTime()}.png`;
+    link.download = `scan_${currentScanMode}_${new Date().getTime()}.png`;
     link.href = canvas.toDataURL();
     link.click();
     showNotification('Image downloaded!', 'success');
+}
+
+// Analyze nature image for plant identification
+async function analyzeNatureImage(canvas) {
+    try {
+        showNotification('Analyzing nature image...', 'info');
+        
+        // Simulate plant identification API call
+        const analysisResult = await simulatePlantIdentification(canvas);
+        const healthData = await assessPlantHealth(canvas);
+        const recommendations = generateCareRecommendations(analysisResult, healthData);
+        
+        analysisResult.health = healthData;
+        analysisResult.recommendations = recommendations;
+        
+        showNatureAnalysisResult(analysisResult);
+        
+    } catch (error) {
+        console.error('Nature analysis error:', error);
+        showNotification('Nature analysis failed: ' + error.message, 'error');
+    }
+}
+
+// Simulate plant identification (in real app, this would call a plant ID API)
+async function simulatePlantIdentification(canvas) {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Analyze image colors and features
+    const imageAnalysis = analyzeImageFeatures(canvas);
+    
+    // Mock plant identification results with enhanced data
+    const plants = [
+        {
+            name: 'Rose (Rosa)',
+            confidence: 0.92,
+            family: 'Rosaceae',
+            description: 'A woody perennial flowering plant of the genus Rosa, in the family Rosaceae.',
+            care: 'Requires full sun, well-drained soil, and regular watering.',
+            season: 'Spring to Fall',
+            toxicity: 'Non-toxic to humans, mildly toxic to pets',
+            uses: 'Ornamental, perfume, culinary (rose hips)'
+        },
+        {
+            name: 'Sunflower (Helianthus)',
+            confidence: 0.88,
+            family: 'Asteraceae',
+            description: 'Large flowering plant in the daisy family Asteraceae.',
+            care: 'Needs full sun, well-drained soil, and moderate watering.',
+            season: 'Summer to Fall',
+            toxicity: 'Non-toxic',
+            uses: 'Ornamental, oil production, bird feed'
+        },
+        {
+            name: 'Oak Tree (Quercus)',
+            confidence: 0.85,
+            family: 'Fagaceae',
+            description: 'A tree or shrub in the beech family, Fagaceae.',
+            care: 'Prefers full sun to partial shade and well-drained soil.',
+            season: 'Year-round (deciduous varieties lose leaves)',
+            toxicity: 'Acorns toxic to some animals',
+            uses: 'Timber, wildlife habitat, landscaping'
+        },
+        {
+            name: 'Lavender (Lavandula)',
+            confidence: 0.90,
+            family: 'Lamiaceae',
+            description: 'Aromatic flowering plant in the mint family.',
+            care: 'Drought tolerant, needs full sun and well-drained soil.',
+            season: 'Spring to Summer',
+            toxicity: 'Generally safe, mild toxicity to pets',
+            uses: 'Aromatherapy, culinary, ornamental, insect repellent'
+        }
+    ];
+    
+    // Select plant based on image analysis
+    let selectedPlant = plants[Math.floor(Math.random() * plants.length)];
+    selectedPlant.confidence = Math.random() * 0.3 + 0.7; // 70-100% confidence
+    
+    // Add image analysis data
+    selectedPlant.imageAnalysis = imageAnalysis;
+    
+    return {
+        identified: true,
+        plant: selectedPlant,
+        suggestions: plants.filter(p => p !== selectedPlant).slice(0, 2),
+        environmentalData: generateEnvironmentalData()
+    };
+}
+
+// Analyze image features for better identification
+function analyzeImageFeatures(canvas) {
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    let totalR = 0, totalG = 0, totalB = 0;
+    let greenPixels = 0, brownPixels = 0, colorfulPixels = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        totalR += r;
+        totalG += g;
+        totalB += b;
+        
+        // Detect green (likely vegetation)
+        if (g > r && g > b && g > 100) greenPixels++;
+        
+        // Detect brown (likely bark/soil)
+        if (r > 100 && g > 50 && b < 100 && Math.abs(r - g) < 50) brownPixels++;
+        
+        // Detect colorful areas (likely flowers)
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 50) colorfulPixels++;
+    }
+    
+    const totalPixels = data.length / 4;
+    const avgR = Math.round(totalR / totalPixels);
+    const avgG = Math.round(totalG / totalPixels);
+    const avgB = Math.round(totalB / totalPixels);
+    
+    return {
+        dominantColor: `rgb(${avgR}, ${avgG}, ${avgB})`,
+        greenPercentage: Math.round((greenPixels / totalPixels) * 100),
+        brownPercentage: Math.round((brownPixels / totalPixels) * 100),
+        colorfulPercentage: Math.round((colorfulPixels / totalPixels) * 100),
+        brightness: Math.round((avgR + avgG + avgB) / 3),
+        contrast: calculateImageContrast(data),
+        saturation: calculateImageSaturation(data, totalPixels)
+    };
+}
+
+// Calculate image contrast
+function calculateImageContrast(data) {
+    let min = 255, max = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+        const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        min = Math.min(min, brightness);
+        max = Math.max(max, brightness);
+    }
+    
+    return Math.round(((max - min) / 255) * 100);
+}
+
+// Calculate image saturation
+function calculateImageSaturation(data, totalPixels) {
+    let totalSaturation = 0;
+    
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const saturation = max === 0 ? 0 : ((max - min) / max) * 100;
+        
+        totalSaturation += saturation;
+    }
+    
+    return Math.round(totalSaturation / totalPixels);
+}
+
+// Generate environmental data
+function generateEnvironmentalData() {
+    return {
+        estimatedLightLevel: ['Low', 'Medium', 'High'][Math.floor(Math.random() * 3)],
+        recommendedWatering: ['Daily', 'Every 2-3 days', 'Weekly'][Math.floor(Math.random() * 3)],
+        soilType: ['Sandy', 'Clay', 'Loamy', 'Rocky'][Math.floor(Math.random() * 4)],
+        humidity: Math.floor(Math.random() * 40) + 40 + '%' // 40-80%
+    };
+}
+
+// Assess plant health from image analysis
+async function assessPlantHealth(canvas) {
+    // Simulate health assessment delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const imageAnalysis = analyzeImageFeatures(canvas);
+    
+    // Determine health based on color analysis
+    const healthScore = calculateHealthScore(imageAnalysis);
+    
+    return {
+        overallHealth: getHealthStatus(healthScore),
+        healthScore: healthScore,
+        issues: generateHealthIssues(imageAnalysis),
+        vitality: {
+            leafColor: analyzeLeafColor(imageAnalysis),
+            growth: ['Excellent', 'Good', 'Fair', 'Poor'][Math.floor(Math.random() * 4)],
+            density: ['Dense', 'Moderate', 'Sparse'][Math.floor(Math.random() * 3)]
+        },
+        symptoms: detectSymptoms(imageAnalysis)
+    };
+}
+
+// Calculate health score based on image features
+function calculateHealthScore(imageAnalysis) {
+    let score = 70; // Base score
+    
+    // Green percentage indicates plant health
+    if (imageAnalysis.greenPercentage > 40) score += 20;
+    else if (imageAnalysis.greenPercentage > 20) score += 10;
+    else score -= 10;
+    
+    // Brightness indicates good lighting
+    if (imageAnalysis.brightness > 100 && imageAnalysis.brightness < 200) score += 10;
+    else score -= 5;
+    
+    // Colorful areas might indicate flowers (healthy)
+    if (imageAnalysis.colorfulPercentage > 15) score += 10;
+    
+    // Brown areas might indicate disease or dead parts
+    if (imageAnalysis.brownPercentage > 30) score -= 15;
+    
+    return Math.max(0, Math.min(100, score));
+}
+
+// Get health status from score
+function getHealthStatus(score) {
+    if (score >= 80) return 'Excellent';
+    if (score >= 65) return 'Good';
+    if (score >= 50) return 'Fair';
+    if (score >= 35) return 'Poor';
+    return 'Critical';
+}
+
+// Generate potential health issues
+function generateHealthIssues(imageAnalysis) {
+    const issues = [];
+    
+    if (imageAnalysis.greenPercentage < 20) {
+        issues.push('Low chlorophyll levels detected');
+    }
+    
+    if (imageAnalysis.brownPercentage > 25) {
+        issues.push('Possible leaf browning or disease');
+    }
+    
+    if (imageAnalysis.brightness < 80) {
+        issues.push('Insufficient lighting detected');
+    }
+    
+    if (imageAnalysis.brightness > 220) {
+        issues.push('Possible light burn or overexposure');
+    }
+    
+    if (issues.length === 0) {
+        issues.push('No major issues detected');
+    }
+    
+    return issues;
+}
+
+// Analyze leaf color health
+function analyzeLeafColor(imageAnalysis) {
+    if (imageAnalysis.greenPercentage > 40) return 'Vibrant Green';
+    if (imageAnalysis.greenPercentage > 25) return 'Moderate Green';
+    if (imageAnalysis.brownPercentage > 20) return 'Yellowing/Browning';
+    return 'Pale/Unhealthy';
+}
+
+// Detect symptoms from image
+function detectSymptoms(imageAnalysis) {
+    const symptoms = [];
+    
+    if (imageAnalysis.brownPercentage > 20) {
+        symptoms.push('Leaf browning');
+    }
+    
+    if (imageAnalysis.greenPercentage < 15) {
+        symptoms.push('Chlorosis (yellowing)');
+    }
+    
+    if (imageAnalysis.brightness < 70) {
+        symptoms.push('Etiolation (stretching)');
+    }
+    
+    // Advanced symptom detection
+    if (imageAnalysis.contrast < 30) {
+        symptoms.push('Poor leaf definition (possible disease)');
+    }
+    
+    if (imageAnalysis.saturation < 20) {
+        symptoms.push('Color fading (stress or disease)');
+    }
+    
+    if (imageAnalysis.brownPercentage > 30 && imageAnalysis.greenPercentage < 30) {
+        symptoms.push('Severe leaf damage or disease');
+    }
+    
+    // Disease pattern detection
+    const diseasePatterns = detectDiseasePatterns(imageAnalysis);
+    symptoms.push(...diseasePatterns);
+    
+    const randomSymptoms = ['Wilting', 'Pest damage', 'Nutrient deficiency', 'Overwatering', 'Underwatering'];
+    if (Math.random() < 0.3) {
+        symptoms.push(randomSymptoms[Math.floor(Math.random() * randomSymptoms.length)]);
+    }
+    
+    return symptoms.length > 0 ? symptoms : ['No visible symptoms'];
+}
+
+// Detect disease patterns
+function detectDiseasePatterns(imageAnalysis) {
+    const patterns = [];
+    
+    // Fungal disease indicators
+    if (imageAnalysis.brownPercentage > 25 && imageAnalysis.brightness < 120) {
+        patterns.push('Possible fungal infection');
+    }
+    
+    // Bacterial disease indicators
+    if (imageAnalysis.contrast > 70 && imageAnalysis.brownPercentage > 15) {
+        patterns.push('Possible bacterial spot disease');
+    }
+    
+    // Viral disease indicators
+    if (imageAnalysis.saturation < 25 && imageAnalysis.greenPercentage < 25) {
+        patterns.push('Possible viral infection (mosaic pattern)');
+    }
+    
+    // Nutrient deficiency patterns
+    if (imageAnalysis.greenPercentage < 20 && imageAnalysis.brightness > 150) {
+        patterns.push('Possible nitrogen deficiency');
+    }
+    
+    // Pest damage patterns
+    if (imageAnalysis.contrast > 60 && imageAnalysis.colorfulPercentage < 10) {
+        patterns.push('Possible insect damage');
+    }
+    
+    return patterns;
+}
+
+// Generate care recommendations
+function generateCareRecommendations(plantResult, healthData) {
+    const recommendations = {
+        immediate: [],
+        weekly: [],
+        monthly: [],
+        seasonal: []
+    };
+    
+    // Immediate recommendations based on health
+    if (healthData.healthScore < 50) {
+        recommendations.immediate.push('Inspect plant thoroughly for pests and diseases');
+        recommendations.immediate.push('Check soil moisture and drainage');
+    }
+    
+    if (healthData.issues.includes('Insufficient lighting detected')) {
+        recommendations.immediate.push('Move to brighter location or add grow lights');
+    }
+    
+    if (healthData.issues.includes('Possible light burn or overexposure')) {
+        recommendations.immediate.push('Move to location with filtered or indirect light');
+    }
+    
+    // Weekly recommendations
+    recommendations.weekly.push('Check soil moisture levels');
+    recommendations.weekly.push('Inspect for pests and diseases');
+    recommendations.weekly.push('Rotate plant for even light exposure');
+    
+    if (plantResult.identified) {
+        const plant = plantResult.plant;
+        
+        // Add plant-specific weekly care
+        if (plant.name.toLowerCase().includes('succulent') || plant.name.toLowerCase().includes('cactus')) {
+            recommendations.weekly.push('Water only when soil is completely dry');
+        } else {
+            recommendations.weekly.push('Water when top inch of soil is dry');
+        }
+    }
+    
+    // Monthly recommendations
+    recommendations.monthly.push('Check for root bound conditions');
+    recommendations.monthly.push('Clean leaves with damp cloth');
+    recommendations.monthly.push('Apply balanced fertilizer if growing season');
+    
+    // Seasonal recommendations
+    recommendations.seasonal.push('Adjust watering frequency for season');
+    recommendations.seasonal.push('Consider repotting if roots are crowded');
+    recommendations.seasonal.push('Prune dead or damaged growth');
+    
+    return recommendations;
+}
+
+// Show nature analysis results
+function showNatureAnalysisResult(result) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        max-width: 90%;
+        max-height: 80%;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    `;
+    
+    if (result.identified) {
+         const plant = result.plant;
+         const analysis = plant.imageAnalysis;
+         const env = result.environmentalData;
+         
+         content.innerHTML = `
+             <h3><i class="fas fa-leaf"></i> Plant Identified</h3>
+             <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                 <h4 style="color: #2e7d32; margin: 0 0 10px 0;">${plant.name}</h4>
+                 <p><strong>Family:</strong> ${plant.family}</p>
+                 <p><strong>Confidence:</strong> ${Math.round(plant.confidence * 100)}%</p>
+                 <p><strong>Description:</strong> ${plant.description}</p>
+                 <p><strong>Care Instructions:</strong> ${plant.care}</p>
+                 <p><strong>Growing Season:</strong> ${plant.season}</p>
+                 <p><strong>Toxicity:</strong> ${plant.toxicity}</p>
+                 <p><strong>Uses:</strong> ${plant.uses}</p>
+             </div>
+             
+             <div style="background: #f0f8ff; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                 <h4><i class="fas fa-eye"></i> Image Analysis</h4>
+                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                     <p><strong>Dominant Color:</strong> <span style="display: inline-block; width: 20px; height: 20px; background: ${analysis.dominantColor}; border-radius: 3px; vertical-align: middle;"></span></p>
+                     <p><strong>Brightness:</strong> ${analysis.brightness}/255</p>
+                     <p><strong>Green Content:</strong> ${analysis.greenPercentage}%</p>
+                     <p><strong>Colorful Areas:</strong> ${analysis.colorfulPercentage}%</p>
+                 </div>
+             </div>
+             
+             <div style="background: #fff8e1; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                 <h4><i class="fas fa-cloud-sun"></i> Environmental Assessment</h4>
+                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                     <p><strong>Light Level:</strong> ${env.estimatedLightLevel}</p>
+                     <p><strong>Watering:</strong> ${env.recommendedWatering}</p>
+                     <p><strong>Soil Type:</strong> ${env.soilType}</p>
+                     <p><strong>Humidity:</strong> ${env.humidity}</p>
+                 </div>
+             </div>
+             
+             ${result.health ? `
+                 <div style="background: #f3e5f5; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                     <h4><i class="fas fa-heartbeat"></i> Health Assessment</h4>
+                     <div style="margin-bottom: 10px;">
+                         <p><strong>Overall Health:</strong> <span style="color: ${getHealthColor(result.health.overallHealth)};">${result.health.overallHealth}</span> (${result.health.healthScore}/100)</p>
+                     </div>
+                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                         <p><strong>Leaf Color:</strong> ${result.health.vitality.leafColor}</p>
+                         <p><strong>Growth:</strong> ${result.health.vitality.growth}</p>
+                         <p><strong>Density:</strong> ${result.health.vitality.density}</p>
+                     </div>
+                     ${result.health.issues.length > 0 ? `
+                         <div style="margin-top: 10px;">
+                             <strong>Issues Detected:</strong>
+                             <ul style="margin: 5px 0; padding-left: 20px;">
+                                 ${result.health.issues.map(issue => `<li>${issue}</li>`).join('')}
+                             </ul>
+                         </div>
+                     ` : ''}
+                     ${result.health.symptoms.length > 0 ? `
+                         <div style="margin-top: 10px;">
+                             <strong>Symptoms:</strong>
+                             <ul style="margin: 5px 0; padding-left: 20px;">
+                                 ${result.health.symptoms.map(symptom => `<li>${symptom}</li>`).join('')}
+                             </ul>
+                         </div>
+                     ` : ''}
+                 </div>
+             ` : ''}
+             
+             ${result.recommendations ? `
+                 <div style="background: #e8f5e8; padding: 15px; border-radius: 10px; margin: 15px 0;">
+                     <h4><i class="fas fa-tasks"></i> Care Recommendations</h4>
+                     
+                     ${result.recommendations.immediate.length > 0 ? `
+                         <div style="margin-bottom: 15px;">
+                             <h5 style="color: #d32f2f; margin: 0 0 5px 0;"><i class="fas fa-exclamation-triangle"></i> Immediate Actions</h5>
+                             <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                                 ${result.recommendations.immediate.map(rec => `<li>${rec}</li>`).join('')}
+                             </ul>
+                         </div>
+                     ` : ''}
+                     
+                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; font-size: 14px;">
+                         <div>
+                             <h6 style="color: #1976d2; margin: 0 0 5px 0;">Weekly</h6>
+                             <ul style="margin: 0; padding-left: 15px;">
+                                 ${result.recommendations.weekly.slice(0, 3).map(rec => `<li>${rec}</li>`).join('')}
+                             </ul>
+                         </div>
+                         <div>
+                             <h6 style="color: #388e3c; margin: 0 0 5px 0;">Monthly</h6>
+                             <ul style="margin: 0; padding-left: 15px;">
+                                 ${result.recommendations.monthly.slice(0, 3).map(rec => `<li>${rec}</li>`).join('')}
+                             </ul>
+                         </div>
+                         <div>
+                             <h6 style="color: #f57c00; margin: 0 0 5px 0;">Seasonal</h6>
+                             <ul style="margin: 0; padding-left: 15px;">
+                                 ${result.recommendations.seasonal.slice(0, 3).map(rec => `<li>${rec}</li>`).join('')}
+                             </ul>
+                         </div>
+                     </div>
+                 </div>
+             ` : ''}
+             
+             ${result.suggestions.length > 0 ? `
+                 <h4>Other Possibilities:</h4>
+                 ${result.suggestions.map(s => `
+                     <div style="background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 5px 0;">
+                         <strong>${s.name}</strong> (${s.family})
+                     </div>
+                 `).join('')}
+             ` : ''}
+             
+             <div style="text-align: center; margin-top: 20px;">
+                 <button onclick="searchPlantInfo('${plant.name}')" style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Learn More</button>
+                 <button onclick="savePlantData('${plant.name}', '${plant.family}')" style="background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Save to Collection</button>
+                 <button onclick="generateCareCalendar('${plant.name}')" style="background: #9c27b0; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Care Calendar</button>
+                 <button onclick="this.closest('.modal').remove()" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Close</button>
+             </div>
+         `;
+    } else {
+        content.innerHTML = `
+            <h3><i class="fas fa-leaf"></i> Nature Analysis</h3>
+            <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <p>Unable to identify the plant or nature object in the image.</p>
+                <p>Try capturing a clearer image with better lighting, or ensure the plant is the main subject.</p>
+            </div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="this.closest('.modal').remove()">Close</button>
+            </div>
+        `;
+    }
+    
+    modal.className = 'modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Search for plant information
+function searchPlantInfo(plantName) {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(plantName + ' plant care information')}`;
+    window.open(searchUrl, '_blank');
+    showNotification(`Searching for ${plantName} information`, 'info');
+}
+
+// Save plant data to collection
+function savePlantData(plantName, family) {
+    let plantCollection = JSON.parse(localStorage.getItem('plantCollection')) || [];
+    
+    const plantData = {
+        name: plantName,
+        family: family,
+        dateFound: new Date().toISOString(),
+        location: 'Camera Scan'
+    };
+    
+    // Check if plant already exists
+    const exists = plantCollection.some(plant => plant.name === plantName);
+    
+    if (!exists) {
+        plantCollection.unshift(plantData);
+        localStorage.setItem('plantCollection', JSON.stringify(plantCollection));
+        showNotification(`${plantName} saved to your plant collection!`, 'success');
+    } else {
+        showNotification(`${plantName} is already in your collection`, 'info');
+    }
+    
+    // Close the modal
+    document.querySelector('.modal').remove();
+}
+
+// View plant collection
+function viewPlantCollection() {
+    const plantCollection = JSON.parse(localStorage.getItem('plantCollection')) || [];
+    
+    if (plantCollection.length === 0) {
+        showNotification('Your plant collection is empty. Start scanning plants to build your collection!', 'info');
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        max-width: 90%;
+        max-height: 80%;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    `;
+    
+    content.innerHTML = `
+        <h3><i class="fas fa-seedling"></i> My Plant Collection (${plantCollection.length})</h3>
+        <div style="max-height: 400px; overflow-y: auto;">
+            ${plantCollection.map((plant, index) => `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4caf50;">
+                    <h4 style="margin: 0 0 5px 0; color: #2e7d32;">${plant.name}</h4>
+                    <p style="margin: 5px 0; color: #666;"><strong>Family:</strong> ${plant.family}</p>
+                    <p style="margin: 5px 0; color: #666;"><strong>Found:</strong> ${new Date(plant.dateFound).toLocaleDateString()}</p>
+                    <button onclick="removePlantFromCollection(${index})" style="background: #f44336; color: white; border: none; padding: 5px 10px; border-radius: 3px; font-size: 12px; cursor: pointer;">Remove</button>
+                </div>
+            `).join('')}
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="clearPlantCollection()" style="background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Clear All</button>
+            <button onclick="this.closest('.modal').remove()" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Close</button>
+        </div>
+    `;
+    
+    modal.className = 'modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Remove plant from collection
+function removePlantFromCollection(index) {
+    let plantCollection = JSON.parse(localStorage.getItem('plantCollection')) || [];
+    const removedPlant = plantCollection.splice(index, 1)[0];
+    localStorage.setItem('plantCollection', JSON.stringify(plantCollection));
+    showNotification(`${removedPlant.name} removed from collection`, 'success');
+    
+    // Refresh the modal
+    document.querySelector('.modal').remove();
+    viewPlantCollection();
+}
+
+// Clear plant collection
+function clearPlantCollection() {
+    if (confirm('Are you sure you want to clear your entire plant collection?')) {
+        localStorage.removeItem('plantCollection');
+        showNotification('Plant collection cleared', 'success');
+        document.querySelector('.modal').remove();
+    }
+}
+
+// Get health status color
+function getHealthColor(status) {
+    const colors = {
+        'Excellent': '#4caf50',
+        'Good': '#8bc34a',
+        'Fair': '#ff9800',
+        'Poor': '#ff5722',
+        'Critical': '#f44336'
+    };
+    return colors[status] || '#757575';
+}
+
+// Generate care calendar
+function generateCareCalendar(plantName) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2001;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        max-width: 90%;
+        max-height: 80%;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    `;
+    
+    const careSchedule = generateCareSchedule(plantName);
+    
+    content.innerHTML = `
+        <h3><i class="fas fa-calendar-alt"></i> Care Calendar for ${plantName}</h3>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Weekly Schedule</h4>
+            ${careSchedule.weekly.map((task, index) => `
+                <div style="display: flex; align-items: center; margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                    <input type="checkbox" id="weekly-${index}" style="margin-right: 10px;">
+                    <label for="weekly-${index}" style="flex: 1;">${task}</label>
+                </div>
+            `).join('')}
+        </div>
+        
+        <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Monthly Tasks</h4>
+            ${careSchedule.monthly.map((task, index) => `
+                <div style="display: flex; align-items: center; margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                    <input type="checkbox" id="monthly-${index}" style="margin-right: 10px;">
+                    <label for="monthly-${index}" style="flex: 1;">${task}</label>
+                </div>
+            `).join('')}
+        </div>
+        
+        <div style="background: #fff3e0; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Seasonal Reminders</h4>
+            ${careSchedule.seasonal.map((task, index) => `
+                <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px;">
+                    <strong>${task.season}:</strong> ${task.task}
+                </div>
+            `).join('')}
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="saveCareCalendar('${plantName}')" style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Save Calendar</button>
+            <button onclick="this.closest('.modal').remove()" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Close</button>
+        </div>
+    `;
+    
+    modal.className = 'modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Generate care schedule for plant
+function generateCareSchedule(plantName) {
+    const baseSchedule = {
+        weekly: [
+            'Check soil moisture',
+            'Inspect for pests',
+            'Rotate plant for even light',
+            'Remove dead leaves'
+        ],
+        monthly: [
+            'Deep watering session',
+            'Apply fertilizer (growing season)',
+            'Clean leaves with damp cloth',
+            'Check for root bound conditions'
+        ],
+        seasonal: [
+            { season: 'Spring', task: 'Repot if needed and increase watering' },
+            { season: 'Summer', task: 'Monitor for increased water needs' },
+            { season: 'Fall', task: 'Reduce fertilizing and prepare for dormancy' },
+            { season: 'Winter', task: 'Reduce watering and protect from cold' }
+        ]
+    };
+    
+    // Customize based on plant type
+    if (plantName.toLowerCase().includes('succulent') || plantName.toLowerCase().includes('cactus')) {
+        baseSchedule.weekly[0] = 'Check soil - water only if completely dry';
+        baseSchedule.monthly[0] = 'Water thoroughly but infrequently';
+    }
+    
+    if (plantName.toLowerCase().includes('fern')) {
+        baseSchedule.weekly.push('Mist leaves for humidity');
+        baseSchedule.monthly.push('Check humidity levels');
+    }
+    
+    return baseSchedule;
+}
+
+// Save care calendar
+function saveCareCalendar(plantName) {
+    const careCalendars = JSON.parse(localStorage.getItem('careCalendars')) || {};
+    const schedule = generateCareSchedule(plantName);
+    
+    careCalendars[plantName] = {
+        schedule: schedule,
+        created: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
+    };
+    
+    localStorage.setItem('careCalendars', JSON.stringify(careCalendars));
+    showNotification(`Care calendar saved for ${plantName}!`, 'success');
+    
+    // Close the modal
+    document.querySelector('.modal').remove();
 }
 
 // Toggle camera flash
@@ -296,6 +1203,46 @@ async function toggleOCR() {
     }
 }
 
+// Toggle Nature scanner
+async function toggleNature() {
+    const cameraSection = document.getElementById('cameraSection');
+    
+    if (cameraSection.style.display === 'none') {
+        currentScanMode = 'nature';
+        setScanMode('nature');
+        await startCamera();
+    } else {
+        closeCamera();
+    }
+}
+
+// Toggle Text scanner
+async function toggleTextScanner() {
+    const cameraSection = document.getElementById('cameraSection');
+    
+    if (cameraSection.style.display === 'none') {
+        currentScanMode = 'text';
+        setScanMode('text');
+        await initOCR();
+        await startCamera();
+    } else {
+        closeCamera();
+    }
+}
+
+// Toggle Barcode scanner
+async function toggleBarcodeScanner() {
+    const cameraSection = document.getElementById('cameraSection');
+    
+    if (cameraSection.style.display === 'none') {
+        currentScanMode = 'barcode';
+        setScanMode('barcode');
+        await startCamera();
+    } else {
+        closeCamera();
+    }
+}
+
 // Set scanning mode
 function setScanMode(mode) {
     currentScanMode = mode;
@@ -315,6 +1262,9 @@ function setScanMode(mode) {
             break;
         case 'barcode':
             instruction.textContent = 'Position barcode within the frame';
+            break;
+        case 'nature':
+            instruction.textContent = 'Position plant or nature object within the frame';
             break;
     }
     
@@ -481,9 +1431,13 @@ function onCodeDetected(result) {
         showNotification(`${currentScanMode.toUpperCase()} detected: ${detectedText}`, 'info');
         document.getElementById('urlInput').value = detectedText;
         
-        // For barcodes, try to search for product info
+        // Handle different scan modes
         if (currentScanMode === 'barcode') {
-            searchProductInfo(detectedText);
+            const barcodeInfo = processBarcodeData(detectedText);
+            showBarcodeResult(barcodeInfo);
+        } else if (currentScanMode === 'text') {
+            const textInfo = processTextData(detectedText);
+            showTextResult(textInfo);
         }
     }
 }
@@ -500,6 +1454,388 @@ function searchProductInfo(barcode) {
             window.open(searchUrl, '_blank');
         }
     }, 2000);
+}
+
+// Get country from EAN prefix
+function getCountryFromEAN(prefix) {
+    const prefixNum = parseInt(prefix);
+    
+    if (prefixNum >= 0 && prefixNum <= 19) return 'US & Canada';
+    if (prefixNum >= 30 && prefixNum <= 39) return 'US drugs';
+    if (prefixNum >= 60 && prefixNum <= 99) return 'US & Canada';
+    if (prefixNum >= 100 && prefixNum <= 139) return 'US';
+    if (prefixNum >= 300 && prefixNum <= 379) return 'France';
+    if (prefixNum === 380) return 'Bulgaria';
+    if (prefixNum >= 400 && prefixNum <= 440) return 'Germany';
+    if (prefixNum >= 450 && prefixNum <= 459) return 'Japan';
+    if (prefixNum >= 460 && prefixNum <= 469) return 'Russia';
+    if (prefixNum >= 490 && prefixNum <= 499) return 'Japan';
+    if (prefixNum >= 500 && prefixNum <= 509) return 'United Kingdom';
+    if (prefixNum >= 520 && prefixNum <= 521) return 'Greece';
+    if (prefixNum >= 540 && prefixNum <= 549) return 'Belgium & Luxembourg';
+    if (prefixNum === 560) return 'Portugal';
+    if (prefixNum >= 570 && prefixNum <= 579) return 'Denmark';
+    if (prefixNum === 590) return 'Poland';
+    if (prefixNum >= 690 && prefixNum <= 695) return 'China';
+    if (prefixNum >= 700 && prefixNum <= 709) return 'Norway';
+    if (prefixNum === 729) return 'Israel';
+    if (prefixNum >= 730 && prefixNum <= 739) return 'Sweden';
+    if (prefixNum === 750) return 'Mexico';
+    if (prefixNum >= 754 && prefixNum <= 755) return 'Canada';
+    if (prefixNum >= 760 && prefixNum <= 769) return 'Switzerland';
+    if (prefixNum >= 770 && prefixNum <= 771) return 'Colombia';
+    if (prefixNum >= 780) return 'Chile';
+    if (prefixNum >= 789 && prefixNum <= 790) return 'Brazil';
+    if (prefixNum >= 800 && prefixNum <= 839) return 'Italy';
+    if (prefixNum >= 840 && prefixNum <= 849) return 'Spain';
+    if (prefixNum >= 870 && prefixNum <= 879) return 'Netherlands';
+    if (prefixNum === 880) return 'South Korea';
+    if (prefixNum === 885) return 'Thailand';
+    if (prefixNum === 888) return 'Singapore';
+    if (prefixNum === 890) return 'India';
+    if (prefixNum >= 900 && prefixNum <= 919) return 'Austria';
+    if (prefixNum >= 930 && prefixNum <= 939) return 'Australia';
+    if (prefixNum >= 940 && prefixNum <= 949) return 'New Zealand';
+    if (prefixNum === 955) return 'Malaysia';
+    if (prefixNum >= 977) return 'Serial publications (ISSN)';
+    if (prefixNum >= 978 && prefixNum <= 979) return 'Books (ISBN)';
+    
+    return 'Unknown';
+}
+
+// Show barcode analysis results
+function showBarcodeResult(barcodeInfo) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        max-width: 90%;
+        max-height: 80%;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    `;
+    
+    content.innerHTML = `
+        <h3><i class="fas fa-barcode"></i> Barcode Analysis</h3>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Basic Information</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px;">
+                <p><strong>Code:</strong> ${barcodeInfo.code}</p>
+                <p><strong>Type:</strong> ${barcodeInfo.type}</p>
+                <p><strong>Length:</strong> ${barcodeInfo.length} digits</p>
+                <p><strong>Valid:</strong> <span style="color: ${barcodeInfo.isValid ? '#4caf50' : '#f44336'};">${barcodeInfo.isValid ? 'Yes' : 'No'}</span></p>
+            </div>
+        </div>
+        
+        ${barcodeInfo.country ? `
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin: 15px 0;">
+                <h4>Geographic Information</h4>
+                <p><strong>Country/Region:</strong> ${barcodeInfo.country}</p>
+                ${barcodeInfo.manufacturer ? `<p><strong>Manufacturer Code:</strong> ${barcodeInfo.manufacturer}</p>` : ''}
+                ${barcodeInfo.product ? `<p><strong>Product Code:</strong> ${barcodeInfo.product}</p>` : ''}
+                ${barcodeInfo.checkDigit ? `<p><strong>Check Digit:</strong> ${barcodeInfo.checkDigit}</p>` : ''}
+            </div>
+        ` : ''}
+        
+        <div style="background: #f3e5f5; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Barcode Type Information</h4>
+            <div style="font-size: 14px;">
+                ${getBarcodeTypeInfo(barcodeInfo.type)}
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="searchProductInfo('${barcodeInfo.code}')" style="background: #4caf50; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Search Product</button>
+            <button onclick="copyToClipboard('${barcodeInfo.code}')" style="background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Copy Code</button>
+            <button onclick="saveBarcodeData('${barcodeInfo.code}', '${barcodeInfo.type}')" style="background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Save to History</button>
+            <button onclick="this.closest('.modal').remove()" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Close</button>
+        </div>
+    `;
+    
+    modal.className = 'modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Get barcode type information
+function getBarcodeTypeInfo(type) {
+    const typeInfo = {
+        'EAN-13': 'European Article Number (13 digits) - Most common worldwide retail barcode standard',
+        'UPC-A': 'Universal Product Code (12 digits) - Primary barcode used in North America',
+        'EAN-8': 'European Article Number (8 digits) - Compact version for small packages',
+        'UPC-E': 'Universal Product Code (6 digits) - Compressed version of UPC-A',
+        'Code 39': 'Alphanumeric barcode supporting letters, numbers, and some symbols',
+        'Code 128': 'High-density barcode supporting full ASCII character set'
+    };
+    
+    return typeInfo[type] || 'General purpose barcode format';
+}
+
+// Copy barcode to clipboard
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification('Barcode copied to clipboard!', 'success');
+    }).catch(() => {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showNotification('Barcode copied to clipboard!', 'success');
+    });
+}
+
+// Save barcode data to history
+function saveBarcodeData(code, type) {
+    let barcodeHistory = JSON.parse(localStorage.getItem('barcodeHistory')) || [];
+    
+    const barcodeData = {
+        code: code,
+        type: type,
+        dateScanned: new Date().toISOString(),
+        location: 'Camera Scan'
+    };
+    
+    // Check if barcode already exists
+    const exists = barcodeHistory.some(barcode => barcode.code === code);
+    
+    if (!exists) {
+        barcodeHistory.unshift(barcodeData);
+        // Keep only last 50 barcodes
+        if (barcodeHistory.length > 50) {
+            barcodeHistory = barcodeHistory.slice(0, 50);
+        }
+        localStorage.setItem('barcodeHistory', JSON.stringify(barcodeHistory));
+        showNotification(`Barcode ${code} saved to history!`, 'success');
+    } else {
+        showNotification(`Barcode ${code} is already in history`, 'info');
+    }
+    
+    // Close the modal
+    document.querySelector('.modal').remove();
+}
+
+// Process text scanning results
+function processTextData(text) {
+    const textInfo = {
+        text: text,
+        length: text.length,
+        wordCount: text.split(/\s+/).filter(word => word.length > 0).length,
+        lineCount: text.split('\n').length,
+        hasNumbers: /\d/.test(text),
+        hasSpecialChars: /[!@#$%^&*(),.?":{}|<>]/.test(text),
+        language: detectLanguage(text),
+        type: classifyTextType(text),
+        dateScanned: new Date().toISOString()
+    };
+    
+    return textInfo;
+}
+
+// Detect language of text (basic detection)
+function detectLanguage(text) {
+    // Simple language detection based on character patterns
+    if (/[\u0D80-\u0DFF]/.test(text)) return 'Sinhala';
+    if (/[\u0B80-\u0BFF]/.test(text)) return 'Tamil';
+    if (/[\u4e00-\u9fff]/.test(text)) return 'Chinese';
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'Japanese';
+    if (/[\u0600-\u06ff]/.test(text)) return 'Arabic';
+    if (/[\u0900-\u097f]/.test(text)) return 'Hindi';
+    if (/[a-zA-Z]/.test(text)) return 'English';
+    return 'Unknown';
+}
+
+// Classify text type
+function classifyTextType(text) {
+    // Email pattern
+    if (/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/.test(text)) {
+        return 'Email';
+    }
+    
+    // Phone number pattern
+    if (/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b|\+\d{1,3}[\s.-]?\d{1,14}/.test(text)) {
+        return 'Phone Number';
+    }
+    
+    // URL pattern
+    if (/https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/.test(text)) {
+        return 'URL';
+    }
+    
+    // Address pattern (basic)
+    if (/\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)/.test(text)) {
+        return 'Address';
+    }
+    
+    // Date pattern
+    if (/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b|\b\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}\b/.test(text)) {
+        return 'Date';
+    }
+    
+    // Credit card pattern
+    if (/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/.test(text)) {
+        return 'Credit Card';
+    }
+    
+    // License plate pattern
+    if (/\b[A-Z]{1,3}[\s-]?\d{1,4}[\s-]?[A-Z]{0,3}\b/.test(text)) {
+        return 'License Plate';
+    }
+    
+    return 'General Text';
+}
+
+// Show text analysis results
+function showTextResult(textInfo) {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        max-width: 90%;
+        max-height: 80%;
+        overflow-y: auto;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    `;
+    
+    content.innerHTML = `
+        <h3><i class="fas fa-font"></i> Text Analysis</h3>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Detected Text</h4>
+            <div style="background: white; padding: 15px; border-radius: 5px; border: 1px solid #ddd; max-height: 200px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;">${textInfo.text}</div>
+        </div>
+        
+        <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Text Statistics</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; font-size: 14px;">
+                <p><strong>Length:</strong> ${textInfo.length} characters</p>
+                <p><strong>Words:</strong> ${textInfo.wordCount}</p>
+                <p><strong>Lines:</strong> ${textInfo.lineCount}</p>
+                <p><strong>Type:</strong> ${textInfo.type}</p>
+                <p><strong>Language:</strong> ${textInfo.language}</p>
+                <p><strong>Has Numbers:</strong> ${textInfo.hasNumbers ? 'Yes' : 'No'}</p>
+            </div>
+        </div>
+        
+        <div style="background: #fff3e0; padding: 20px; border-radius: 10px; margin: 15px 0;">
+            <h4>Quick Actions</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                ${getTextActions(textInfo)}
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button onclick="copyToClipboard('${textInfo.text.replace(/'/g, "\\'")}')") style="background: #2196f3; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Copy Text</button>
+            <button onclick="saveTextData('${textInfo.text.replace(/'/g, "\\'")}')") style="background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Save to History</button>
+            <button onclick="this.closest('.modal').remove()" style="background: #757575; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">Close</button>
+        </div>
+    `;
+    
+    modal.className = 'modal';
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close on background click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// Get text-specific actions based on detected type
+function getTextActions(textInfo) {
+    let actions = [];
+    
+    if (textInfo.type === 'Email') {
+        actions.push(`<button onclick="window.open('mailto:${textInfo.text}', '_blank')" style="background: #4caf50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px;">Send Email</button>`);
+    }
+    
+    if (textInfo.type === 'Phone Number') {
+        actions.push(`<button onclick="window.open('tel:${textInfo.text}', '_blank')" style="background: #4caf50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px;">Call Number</button>`);
+    }
+    
+    if (textInfo.type === 'URL') {
+        actions.push(`<button onclick="window.open('${textInfo.text}', '_blank')" style="background: #4caf50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px;">Open URL</button>`);
+    }
+    
+    // Google search action for any text
+    actions.push(`<button onclick="window.open('https://www.google.com/search?q=${encodeURIComponent(textInfo.text)}', '_blank')" style="background: #2196f3; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px;">Google Search</button>`);
+    
+    // Translate action
+    actions.push(`<button onclick="window.open('https://translate.google.com/?text=${encodeURIComponent(textInfo.text)}', '_blank')" style="background: #9c27b0; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 12px;">Translate</button>`);
+    
+    return actions.join('');
+}
+
+// Save text data to history
+function saveTextData(text) {
+    let textHistory = JSON.parse(localStorage.getItem('textHistory')) || [];
+    
+    const textData = {
+        text: text,
+        dateScanned: new Date().toISOString(),
+        location: 'Camera Scan',
+        type: classifyTextType(text)
+    };
+    
+    // Check if text already exists
+    const exists = textHistory.some(item => item.text === text);
+    
+    if (!exists) {
+        textHistory.unshift(textData);
+        // Keep only last 50 text entries
+        if (textHistory.length > 50) {
+            textHistory = textHistory.slice(0, 50);
+        }
+        localStorage.setItem('textHistory', JSON.stringify(textHistory));
+        showNotification('Text saved to history!', 'success');
+    } else {
+        showNotification('Text is already in history', 'info');
+    }
+    
+    // Close the modal
+    document.querySelector('.modal').remove();
 }
 
 // Switch between front and back camera

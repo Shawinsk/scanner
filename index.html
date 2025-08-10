@@ -38,6 +38,18 @@
                 <button id="ocrBtn" onclick="toggleOCR()">
                     <i class="fas fa-font"></i> Text Scanner
                 </button>
+                <button id="natureBtn" onclick="toggleNature()">
+                    <i class="fas fa-leaf"></i> Nature Scanner
+                </button>
+                <button id="collectionBtn" onclick="viewPlantCollection()">
+                    <i class="fas fa-seedling"></i> My Plants
+                </button>
+                <button id="textScanBtn" onclick="toggleTextScanner()">
+                    <i class="fas fa-font"></i> Text Scanner
+                </button>
+                <button id="barcodeScanBtn" onclick="toggleBarcodeScanner()">
+                    <i class="fas fa-barcode"></i> Barcode Scanner
+                </button>
             </div>
             
             <!-- Camera Scanner Section -->
@@ -61,6 +73,9 @@
                             </button>
                             <button class="mode-btn" onclick="setScanMode('barcode')" id="barcodeMode">
                                 <i class="fas fa-barcode"></i> Barcode
+                            </button>
+                            <button class="mode-btn" onclick="setScanMode('nature')" id="natureMode">
+                                <i class="fas fa-leaf"></i> Nature
                             </button>
                         </div>
                     </div>

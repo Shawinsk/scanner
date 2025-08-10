@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Website Scanner</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-search"></i> Mobile Website Scanner</h1>
+            <p>Scan websites using URL input or QR code camera</p>
+        </header>
+
+        <div class="scanner-section">
+            <div class="input-group">
+                <input type="url" id="urlInput" placeholder="Enter website URL (e.g., https://example.com)" required>
+                <select id="scanType">
+                    <option value="basic">Basic Scan</option>
+                    <option value="security">Security Scan</option>
+                    <option value="performance">Performance Scan</option>
+                    <option value="seo">SEO Scan</option>
+                    <option value="comprehensive">Comprehensive Scan</option>
+                </select>
+            </div>
+            
+            <div class="button-group">
+                <button id="scanBtn" onclick="startScan()">
+                    <i class="fas fa-play"></i> Start Scan
+                </button>
+                <button id="cameraBtn" onclick="toggleCamera()">
+                    <i class="fas fa-camera"></i> Camera Scanner
+                </button>
+                <button id="ocrBtn" onclick="toggleOCR()">
+                    <i class="fas fa-font"></i> Text Scanner
+                </button>
+            </div>
+            
+            <!-- Camera Scanner Section -->
+            <div class="camera-section" id="cameraSection" style="display: none;">
+                <div class="camera-container">
+                    <video id="cameraVideo" autoplay playsinline muted></video>
+                    <div class="camera-overlay">
+                        <div class="scan-frame">
+                            <div class="corner top-left"></div>
+                            <div class="corner top-right"></div>
+                            <div class="corner bottom-left"></div>
+                            <div class="corner bottom-right"></div>
+                        </div>
+                        <p class="scan-instruction" id="scanInstruction">Position content within the frame</p>
+                        <div class="scan-mode-selector">
+                            <button class="mode-btn active" onclick="setScanMode('qr')" id="qrMode">
+                                <i class="fas fa-qrcode"></i> QR Code
+                            </button>
+                            <button class="mode-btn" onclick="setScanMode('text')" id="textMode">
+                                <i class="fas fa-font"></i> Text
+                            </button>
+                            <button class="mode-btn" onclick="setScanMode('barcode')" id="barcodeMode">
+                                <i class="fas fa-barcode"></i> Barcode
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="camera-controls">
+                    <button id="closeCameraBtn" onclick="closeCamera()">
+                        <i class="fas fa-times"></i> Close Camera
+                    </button>
+                    <button id="switchCameraBtn" onclick="switchCamera()" style="display: none;">
+                        <i class="fas fa-sync-alt"></i> Switch Camera
+                    </button>
+                    <button id="captureBtn" onclick="captureImage()">
+                        <i class="fas fa-camera-retro"></i> Capture
+                    </button>
+                    <button id="flashBtn" onclick="toggleFlash()" style="display: none;">
+                        <i class="fas fa-lightbulb"></i> Flash
+                    </button>
+                    <button id="helpBtn" onclick="showCameraPermissionHelp()">
+                        <i class="fas fa-question-circle"></i> Help
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Scanning website... Please wait</p>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <h2><i class="fas fa-chart-line"></i> Scan Results</h2>
+            <div class="scanned-url" id="scannedUrl"></div>
+            <div class="results-grid" id="resultsGrid">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h3><i class="fas fa-history"></i> Scan History</h3>
+            <div class="history-controls">
+                <button onclick="clearHistory()" class="clear-btn">
+                    <i class="fas fa-trash"></i> Clear History
+                </button>
+            </div>
+            <div class="history-list" id="historyList">
+                <!-- History items will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
